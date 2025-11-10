@@ -1,0 +1,3 @@
+[submodule "src/offboard-control"]
+	path = src/offboard-control
+	url = https://github.com/mandominguez97/offboard-control.git
