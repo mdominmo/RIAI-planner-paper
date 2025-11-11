@@ -61,8 +61,10 @@ class RttStarPlanner():
     def _find_neighbors(self, q_new, radius):
         
         neighbors = [node for node in self._tree if np.linalg.norm(node._position - q_new) < radius]
+
         if not neighbors:
             return None, None    
+        
         best_parent = np.argmin([n._cost + np.linalg.norm(q_new - n._position) for n in neighbors])
     
         return neighbors.pop(best_parent), neighbors
@@ -79,29 +81,34 @@ class RttStarPlanner():
 
     
     def _check_restrictions(self, node, parent, obstacles):
-    
+        
+        # height restriction
+        if node._position[2] <= 0.0 or node._position[2] >= self._upper_limit[2]:
+            return False
         # Line parent-child doesn´t intercepts the obstacle
         for obstacle in obstacles:
-            u = parent._position - node._position
-            v = obstacle[:2] - node._position
+            u = parent._position[:2] - node._position[:2]
+            u_3d = parent._position - node._position
+            v = obstacle[:2] - node._position[:2]
 
             t = np.dot(v,u) / np.dot(u,u)
             t = np.clip(t, 0, 1)
 
-            closest = node._position + t*u
-            dist = np.linalg.norm(closest - obstacle[:2])
+            closest = node._position + t * u_3d
+            dist_xy = np.linalg.norm(closest[:2] - obstacle[:2])
 
-            if dist <= obstacle[2]:
-                return False
+            if dist_xy <= obstacle[3]:
+                if 0.0 <= closest[2] <= obstacle[2]:
+                    return False
         return True
 
 
-    def solve(self, start, goal, obstacles, tol=2.0):
+    def solve(self, start, goal, obstacles, limit, tol=2.0):
         
         goal_node = None
         self._tree.append(Node(start))
         
-        for _ in range(self._n_steps):
+        for n_iterations in range(self._n_steps):
 
             q_rand = self._q_rand()
             q_nearest = self._q_nearest(q_rand)
@@ -119,6 +126,7 @@ class RttStarPlanner():
                     self._rewire(neighbors, new_node, obstacles)
                 if np.linalg.norm(new_node._position - goal) < tol:
                     goal_node = new_node
-                    break
+                    if limit:
+                        break
                 
-        return goal_node, self._tree
+        return goal_node, self._tree, n_iterations+1
