@@ -6,6 +6,7 @@ from rtt_star_planner import RttStarPlanner
 CYLINDER_HEIGHT = 1.5 
 OBSTACLE_RADIUS = 1.5
 Z_BASE = 0.0 
+BIAS_PROB = .0
 
 upper_limit = np.array([20.0, 20.0, 1.5])
 lower_limit = np.array([0.0, 0.0, 0.0])
@@ -51,7 +52,7 @@ for obstacle in obstacles:
     ax.plot_trisurf(X_base, Y_base, Z_base_const, color='gray', alpha=0.6) 
     ax.plot_trisurf(X_base, Y_base, Z_top_const, color='gray', alpha=0.6) 
 
-goal_node, tree, n_iterations = planner.solve(start, goal, obstacles, False, tol)
+goal_node, tree, n_iterations = planner.solve(start, goal, obstacles, BIAS_PROB, True, tol)
 
 for node in tree:
     if node._parent:
@@ -83,7 +84,7 @@ ax.set_zlabel('Z')
 ax.set_xlim(lower_limit[0], upper_limit[0])
 ax.set_ylim(lower_limit[1], upper_limit[1])
 ax.set_zlim(lower_limit[2], upper_limit[2])
-ax.set_title(f'RTT Tree*, Iterations: {n_iterations}, tol: {tol} m, step_size: {step_size} m')
+ax.set_title(f'RTT Tree*, Iterations: {n_iterations}, tol: {tol} m, step_size: {step_size} m, bias: {BIAS_PROB}.')
 
 handles, labels = ax.get_legend_handles_labels()
 obstacle_proxy = Rectangle((0, 0), 1, 1, fc='gray', alpha=0.5) 

@@ -40,7 +40,9 @@ class RttStarPlanner():
         self._n_steps = n_steps
 
 
-    def _q_rand(self) -> np.ndarray:
+    def _q_rand(self, goal=None, prob=.0) -> np.ndarray:
+        if goal is not None and np.random.rand() < prob:
+            return goal
         return np.random.uniform(low=self._lower_limit, high=self._upper_limit)
 
 
@@ -91,7 +93,11 @@ class RttStarPlanner():
             u_3d = parent._position - node._position
             v = obstacle[:2] - node._position[:2]
 
-            t = np.dot(v,u) / np.dot(u,u)
+            denom = np.dot(u,u)
+            if denom <= 1e-9:
+                continue
+
+            t = np.dot(v,u) / denom
             t = np.clip(t, 0, 1)
 
             closest = node._position + t * u_3d
@@ -103,14 +109,14 @@ class RttStarPlanner():
         return True
 
 
-    def solve(self, start, goal, obstacles, limit, tol=2.0):
+    def solve(self, start, goal, obstacles, bias_prob=.0, limit=False, tol=2.0):
         
         goal_node = None
         self._tree.append(Node(start))
         
         for n_iterations in range(self._n_steps):
-
-            q_rand = self._q_rand()
+            
+            q_rand = self._q_rand(goal, bias_prob)
             q_nearest = self._q_nearest(q_rand)
             q_new = self._q_new(q_rand, q_nearest)
             
