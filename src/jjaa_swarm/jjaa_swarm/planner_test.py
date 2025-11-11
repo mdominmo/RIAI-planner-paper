@@ -3,18 +3,18 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle 
 from rtt_star_planner import RttStarPlanner 
 
-CYLINDER_HEIGHT = 1.5 
-OBSTACLE_RADIUS = 1.5
+CYLINDER_HEIGHT = 1.3 
+OBSTACLE_RADIUS = 2.5
 Z_BASE = 0.0 
-BIAS_PROB = .0
+BIAS_PROB = .5
 
 upper_limit = np.array([20.0, 20.0, 1.5])
 lower_limit = np.array([0.0, 0.0, 0.0])
 
-start = np.array([0.0, 0.0, 1.0])
-goal = np.array([20.0, 20.0, 1.0])
+start = np.array([0.0, 0.0, 1.5])
+goal = np.array([20.0, 20.0, 1.5])
 
-obstacles = np.array([[5.0, 5.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[12.0, 6.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[4.0, 3.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[3.0, 10.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS]])
+obstacles = np.array([[5.0, 5.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[12.0, 6.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[4.0, 3.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[3.0, 10.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS], [15.0, 15.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS]])
 
 step_size = 1.0
 n_steps = 2000
