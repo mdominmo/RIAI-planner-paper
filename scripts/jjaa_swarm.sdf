@@ -170,9 +170,9 @@
       <heading_deg>0</heading_deg>
     </spherical_coordinates>
     <include>
-      <uri>model://CITY_1</uri>
+      <uri>models://CITY_1</uri>
       <name>city_terrain</name>
-      <pose>0 0 0.02 1.5748417523309055 0 0</pose>
+      <pose>0 0 0.019999999552965164 1.5748400667681035 0 0</pose>
     </include>
     <model name='Terrain'>
       <link name='link_terrain'>
@@ -225,29 +225,66 @@
       <self_collide>false</self_collide>
     </model>
     <include>
-      <uri>model://aruco_3</uri>
-      <name>aruco_3</name>
-      <pose>-179.94200134277344 153.30903625488281 86.273902893066406 0 0 0</pose>
+      <uri>models://MaleVisitorOnPhone</uri>
+      <name>MaleVisitorOnPhone_4</name>
+      <pose>119.302001953125 -83.973197937011719 1.6961520910263062 0 0 0</pose>
     </include>
     <include>
-      <uri>model://aruco_0</uri>
-      <name>aruco_0</name>
-      <pose>69.879203796386719 43.967201232910156 21.437326431274414 0 0 0</pose>
+      <uri>models://MaleVisitorOnPhone</uri>
+      <name>MaleVisitorOnPhone_0</name>
+      <pose>107.46299743652344 -104.57993316650391 1.6328500509262085 0 0 0</pose>
     </include>
     <include>
-      <uri>model://aruco_1</uri>
+      <uri>models://FemaleVisitor</uri>
+      <name>FemaleVisitor_3</name>
+      <pose>103.66300201416016 -87.250297546386719 1.6719952821731567 0 0 0</pose>
+    </include>
+    <include>
+      <uri>models://FemaleVisitor</uri>
+      <name>FemaleVisitor_0</name>
+      <pose>120.69400024414062 -102.6719970703125 1.6214890480041504 0 0 0</pose>
+    </include>
+    <include>
+      <uri>models://MaleVisitorOnPhone</uri>
+      <name>MaleVisitorOnPhone_1</name>
+      <pose>95.0545654296875 -102.58899688720703 1.6252800226211548 0 0 0</pose>
+    </include>
+    <include>
+      <uri>models://MaleVisitorOnPhone</uri>
+      <name>MaleVisitorOnPhone_2</name>
+      <pose>107.95800018310547 -78.400543212890625 1.7836799621582031 0 0 0</pose>
+    </include>
+    <include>
+      <uri>models://FemaleVisitor</uri>
+      <name>FemaleVisitor_1</name>
+      <pose>115.47799682617188 -94.850814819335938 1.682360053062439 0 0 0</pose>
+    </include>
+    <include>
+      <uri>models://MaleVisitorOnPhone</uri>
+      <name>MaleVisitorOnPhone_3</name>
+      <pose>92.3404541015625 -82.512702941894531 1.7011599540710449 0 0 0</pose>
+    </include>
+    <include>
+      <uri>models://FemaleVisitor</uri>
+      <name>FemaleVisitor_2</name>FemaleVisitor
+      <uri>models://aruco_1</uri>
       <name>aruco_1</name>
-      <pose>44.683300018310547 316.04400634765625 49.119235992431641 0 0 0</pose>
+      <pose>88.294700622558594 -105.22899627685547 0.67018407583236694 0 0 0</pose>
     </include>
     <include>
-      <uri>model://aruco_2</uri>
-      <name>aruco_2</name>
-      <pose>171.46499633789062 -115.11000061035156 72.880744934082031 0 0 0</pose>
-    </include>
-    <include>
-      <uri>model://aruco_4</uri>
+      <uri>models://aruco_4</uri>
       <name>aruco_4</name>
-      <pose>-212.21400451660156 -192.14100646972656 35.865772247314453 0 0 0</pose>
+      <pose>98.242103576660156 -90.894599914550781 0.72727781534194946 0 0 0</pose>
+    </include>
+    <include>
+      <uri>models://aruco_2</uri>
+      <name>aruco_2</name>
+      <pose>113.10600280761719 -77.0166015625 0.78626340627670288 0 0 0</pose>
+    </include>
+    <include>
+      <uri>models://aruco_3</uri>
+      <name>aruco_3</name>
+      <pose>114.65299987792969 -105.11199951171875 0.64789998531341553 0 0 0</pose>
     </include>
     <light name='sunUTC' type='directional'>
       <pose>0 0 500 0 0 0</pose>
