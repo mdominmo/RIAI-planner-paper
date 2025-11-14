@@ -18,6 +18,9 @@ class Planner():
         ):
         self._mission_frame = mission_frame
         self._mission_frame.position.z = mission_height
+
+        self.limit = True
+        self.bias_prob = .6
         
         #Bounding box
         self.rtt_start_planner = RttStarPlanner(
@@ -48,10 +51,14 @@ class Planner():
     def get_perception_trajectory(self):
         return self.perception_trajectories, self.asigned_vehicles
 
-
-    def get_execution_planning(self, vehicle_poses, target_poses):
+    #TODO For multiple vehicles
+    def get_execution_planning(self, vehicle_poses, target_poses, avg_speed, obstacles):
         trajectories, self.asigned_vehicles = self.rtt_star_planner.plan(
             vehicle_poses,
-            target_poses
+            target_poses,
+            avg_speed,
+            obstacles,
+            bias=self.rtt_bias,
+            limit=self.limit,
         )
         return trajectories, self.asigned_vehicles

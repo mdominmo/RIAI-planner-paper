@@ -30,7 +30,14 @@ class MissionNode(Node):
         self.declare_parameter('targets', 4)
         self.declare_parameter("vehicle_ids", [1,2])
         self.declare_parameter('n_points', 400)
+        
         self.declare_parameter('mission_frame', [.0, .0, .0])
+        self.declare_parameter('mission_radius', 5.0)
+        self.declare_parameter('mission_height', 4.0)
+        self.declare_parameter('step_size', 1,0)
+        self.declare_parameter('n_steps', 2000)
+        self.declare_parameter('space_coef', .5)
+        self.declare_parameter('time_coef', .5)
 
         self.mode = self.get_parameter('mode').get_parameter_value().string_value
         self.perception = self.get_parameter('perception').get_parameter_value().string_value
@@ -38,6 +45,14 @@ class MissionNode(Node):
         self.n_targets = self.get_parameter('targets').get_parameter_value().integer_value
         self.vehicle_ids = self.get_parameter('vehicle_ids').get_parameter_value().integer_array_value
         self.n_points = self.get_parameter('n_points').get_parameter_value().integer_value
+
+        self.mission_frame = self.get_parameter('mission_frame').get_parameter_value().double_array_value
+        self.mission_radius = self.get_parameter('mission_radius').get_parameter_value().double_value
+        self.mission_height = self.get_parameter('mission_height').get_parameter_value().double_value
+        self.step_size = self.get_parameter('step_size').get_parameter_value().double_value
+        self.n_steps = self.get_parameter('n_steps').get_parameter_value().integer_value
+        self.space_coef = self.get_parameter('space_coef').get_parameter_value().double_value
+        self.time_coef = self.get_parameter('time_coef').get_parameter_value().double_value
 
         self.bridge = CvBridge()
         self.dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_ARUCO_ORIGINAL)
@@ -200,7 +215,11 @@ class MissionNode(Node):
             self.mission_frame,
             self.mission_radius,
             self.mission_height,
-            len(self.vehicle_ids)
+            len(self.vehicle_ids),
+            self.step_size,
+            self.n_steps,
+            self.space_coef,
+            self.time_coef
         )
         
 

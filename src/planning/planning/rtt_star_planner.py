@@ -144,7 +144,7 @@ class RttStarPlanner():
         return True
 
 
-    def solve(self, start, goal, speed, obstacles, bias_prob=.0, limit=False, tol_space=2.0, tol_time=5.0):
+    def plan(self, start, goal, speed, obstacles, bias_prob=.0, limit=False, tol_space=2.0, tol_time=5.0):
         
         goal_node = None
         self._tree.append(Node(start))
