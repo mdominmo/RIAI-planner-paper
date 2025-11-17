@@ -3,3 +3,5 @@ log
 install
 tmp
 src/riai_planner/riai_planner/__pycache__/ 
+.venv/*
+src/planning/planning/__pycache__/*
