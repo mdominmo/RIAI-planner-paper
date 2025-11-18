@@ -109,7 +109,7 @@ class MissionTfNode(Node):
                 w=self.mission_frame_pose.orientation.w
             )
             self.static_tf_broadcaster.sendTransform(t)
-            self.get_logger().info(f"Mission frame tf published.")
+            self.get_logger().debug(f"Mission frame tf published.")
  
 
     def uav_local_frame_callback(self, msg, uav_id):
@@ -132,7 +132,7 @@ class MissionTfNode(Node):
             t.transform.translation.z = dz
 
             self.static_tf_broadcaster.sendTransform(t)
-            self.get_logger().info(f"UAV {uav_id} tf published.")
+            self.get_logger().debug(f"UAV {uav_id} tf published.")
 
 
 def main(args=None):

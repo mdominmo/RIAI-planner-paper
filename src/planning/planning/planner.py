@@ -1,10 +1,10 @@
 from geometry_msgs.msg import Pose
-from planning.utils import generate_loiter_formation
-from planning.rtt_star_planner import RttStarPlanner
+from .utils import generate_loiter_formation, square_bounds_from_circle
+from .multi_rrt_star_planner import MultiRRTStarPlanner
+import numpy as np
+
 
 class Planner():
-    
-    
     def __init__(
             self,
             mission_frame: Pose,
@@ -14,51 +14,109 @@ class Planner():
             step_size: float,
             n_steps: int,
             space_coef: float,
-            time_coef: float
+            time_coef: float,
+            avg_speed: float,
+            spatial_tol: float,
+            time_tol: float,
+            cylinder_height: float,
+            obstacle_radius: float
         ):
+        self._t_final = 70.0
         self._mission_frame = mission_frame
-        self._mission_frame.position.z = mission_height
+        self._step_size = step_size
+        self._n_steps = n_steps
+        self._space_coef = space_coef
+        self._time_coef = time_coef
+        self._limit = True
+        self._bias_prob = .8
+        self._avg_speed = avg_speed
+        self._spatial_tol = spatial_tol
+        self._time_tol = time_tol
+        self._cylinder_height = cylinder_height
+        self._obstacle_radius = obstacle_radius
+        self.planner = MultiRRTStarPlanner()
 
-        self.limit = True
-        self.bias_prob = .6
-        
-        #Bounding box
-        self.rtt_start_planner = RttStarPlanner(
-            lower_limit=[mission_frame.position.x - mission_radius, mission_frame.position.y - mission_radius],
-            upper_limit=[mission_frame.position.x + mission_radius, mission_frame.position.y + mission_radius],
-            step_size=step_size,
-            n_steps=n_steps,
-            space_coef=space_coef,
-            time_coef=time_coef
-        )
-        
+        self._mission_frame.position.z = mission_height
         self.perception_trajectories = generate_loiter_formation(
-            mission_frame,
-            mission_radius,
-            n_vehicles
+            center=mission_frame,
+            radius=mission_radius,
+            n_drones=n_vehicles,
+            n_points=200,
+            speed=self._avg_speed
         )
         self.assigned_vehicles = [] 
-
-
-    def get_initial_trajectory(self, vehicle_poses):
-        trajectories, self.asigned_vehicles = self.rtt_star_planner.plan(
-            vehicle_poses,
-            [self.perception_trajectories[n][0][0] for n in range(len(self.perception_trajectories))]
+        self._lower_limit, self._upper_limit = square_bounds_from_circle(
+            mission_frame,
+            mission_radius
         )
-        return trajectories, self.asigned_vehicles
+        self._lower_limit.append(.0)
+        self._upper_limit.append(mission_height)
+
+
+    def get_initial_trajectory(self, vehicle_poses, obstacles_poses):
+        
+        obstacles = []
+        for obstacle in obstacles_poses:
+            delta_t = .5
+            t_obs = np.arange(0, self._t_final + delta_t, delta_t)
+            n_points = len(t_obs)
+            x_obs = np.full(n_points, obstacle.position.x)
+            y_obs = np.full(n_points, obstacle.position.y)
+            z_obs = np.full(n_points, self._cylinder_height)
+            r_obs = np.full(n_points, self._obstacle_radius)
+
+            obstacle = np.column_stack([x_obs, y_obs, z_obs, t_obs, r_obs])
+            obstacles.append(obstacle)
+
+        start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
+        goal_poses = [self.perception_trajectories[n][0][0] for n in range(len(vehicle_poses))]
+        goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
+        
+        trajectories = self.plan(start_poses, goal_poses, obstacles)
+        return trajectories
 
 
     def get_perception_trajectory(self):
-        return self.perception_trajectories, self.asigned_vehicles
+        return self.perception_trajectories
 
-    #TODO For multiple vehicles
-    def get_execution_planning(self, vehicle_poses, target_poses, avg_speed, obstacles):
-        trajectories, self.asigned_vehicles = self.rtt_star_planner.plan(
-            vehicle_poses,
-            target_poses,
-            avg_speed,
+
+    def get_execution_planning(self, vehicle_poses, goal_poses, obstacles_poses):
+
+        obstacles = []
+        for obstacle in obstacles_poses:
+            delta_t = .5
+            t_obs = np.arange(0, 70 + delta_t, delta_t)
+            n_points = len(t_obs)
+            x_obs = np.full(n_points, obstacle.position.x)
+            y_obs = np.full(n_points, obstacle.position.y)
+            z_obs = np.full(n_points, self._cylinder_height)
+            r_obs = np.full(n_points, self._obstacle_radius)
+
+            obstacle = np.column_stack([x_obs, y_obs, z_obs, t_obs, r_obs])
+            obstacles.append(obstacle)
+
+        start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
+        goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
+
+        return self.plan(start_poses, goal_poses, obstacles)
+    
+
+    def plan(self, start_poses, goal_poses, obstacles):
+        return self.planner.plan(
+            start_poses,
+            goal_poses,
+            self._lower_limit,
+            self._upper_limit,
+            self._step_size,
+            self._n_steps,
+            self._space_coef,
+            self._time_coef,
+            self._avg_speed,
             obstacles,
-            bias=self.rtt_bias,
-            limit=self.limit,
+            self._bias_prob,
+            self._limit,
+            self._spatial_tol,
+            self._time_tol,
+            self._cylinder_height,
+            self._obstacle_radius
         )
-        return trajectories, self.asigned_vehicles

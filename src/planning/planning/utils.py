@@ -11,6 +11,125 @@ from transforms3d.euler import euler2quat
 import csv
 from ament_index_python.packages import get_package_share_directory
 import os
+from scipy import interpolate
+
+
+def densify_waypoints(poses, points_per_segment=5):
+    """
+    Genera puntos intermedios lineales entre waypoints para suavizar el spline.
+    
+    Args:
+        poses (list[Pose]): waypoints originales.
+        points_per_segment (int): número de puntos extra por segmento.
+    
+    Returns:
+        list[Pose]: lista de poses con puntos extra.
+    """
+    new_poses = []
+
+    for i in range(len(poses)-1):
+        p0 = poses[i]
+        p1 = poses[i+1]
+
+        for j in range(points_per_segment):
+            t = j / points_per_segment
+            p = Pose()
+            p.position.x = (1-t)*p0.position.x + t*p1.position.x
+            p.position.y = (1-t)*p0.position.y + t*p1.position.y
+            p.position.z = (1-t)*p0.position.z + t*p1.position.z
+            new_poses.append(p)
+    
+    # Añadir el último waypoint original
+    new_poses.append(poses[-1])
+
+    return new_poses
+
+
+def bspline_trajectory(poses, n_points=200, smoothing=0.0, degree=3, periodic=False, speed=1.0):
+    """
+    Genera una trayectoria suavizada mediante B-spline.
+    Devuelve una lista de diccionarios con Pose, yaw y vector de velocidad (vx,vy,vz),
+    y el tiempo medio entre puntos de la trayectoria.
+    """
+
+    result = []
+    dt = .0
+
+    if len(poses) == 1:
+        result.append({
+            "pose": poses[0],
+            "yaw": float('nan'),
+            "vel": float('nan')
+        })
+        return result, dt
+    else: 
+        pts = np.array([[p.position.x, p.position.y, p.position.z] for p in densify_waypoints(poses, 5)]).T
+        
+        tck, u = interpolate.splprep(pts, s=smoothing, k=degree, per=periodic)
+        u_new = np.linspace(0, 1, n_points)
+        out = interpolate.splev(u_new, tck)         
+        dout = interpolate.splev(u_new, tck, der=1) 
+
+        total_length = 0.0
+
+        for i in range(n_points):
+            x, y, z = out[0][i], out[1][i], out[2][i]
+            dx, dy, dz = dout[0][i], dout[1][i], dout[2][i]
+
+            # Calcular yaw
+            yaw = math.atan2(dy, dx)
+
+            # Vector tangente normalizado
+            norm = math.sqrt(dx**2 + dy**2 + dz**2)
+            if norm > 1e-6:
+                vx, vy, vz = (dx / norm * speed,
+                            dy / norm * speed,
+                            dz / norm * speed)
+            else:
+                vx, vy, vz = 0.0, 0.0, 0.0
+
+            # Pose con yaw guardado en orientation.z
+            p = Pose()
+            p.position.x = x
+            p.position.y = y
+            p.position.z = z
+            p.orientation.x = 0.0
+            p.orientation.y = 0.0
+            p.orientation.z = yaw
+            p.orientation.w = 0.0
+
+            vel = Twist()   
+            vel.linear.x = vx
+            vel.linear.y = vy 
+            vel.linear.z = vz
+
+            result.append({
+                "pose": p,
+                "yaw": yaw,
+                "vel": vel
+            })
+
+            # Sumar distancia para longitud total
+            if i > 0:
+                dx_seg = out[0][i] - out[0][i-1]
+                dy_seg = out[1][i] - out[1][i-1]
+                dz_seg = out[2][i] - out[2][i-1]
+                seg_length = math.sqrt(dx_seg**2 + dy_seg**2 + dz_seg**2)
+                total_length += seg_length
+
+        # Tiempo medio entre puntos
+        dt = total_length / (speed * (n_points - 1))
+
+        return result, dt
+
+
+def enu_ned_trajectories(trajectories):
+    for traj in trajectories:
+        ned_pos = []
+        for p in traj[0]:
+            ned_pos.append(enu_ned(p))
+        traj[0] = ned_pos
+    return trajectories
 
 
 def gps_offset_in_enu(lat_ref, lon_ref, alt_ref, lat_origin, lon_origin, alt_origin):
@@ -493,36 +612,24 @@ def generate_loiter_formation(center: Pose, radius: float, n_drones=3, n_points=
     ang_speed = speed / radius
     dt = d_theta / ang_speed
 
-    center_ned = Pose()
-    center_ned.position.x = center.position.x
-    center_ned.position.y = center.position.y
-    center_ned.position.z = -center.position.z
-
     for theta0 in angles0:
-        ned_poses = []
-        ned_vels = []
+        vels = []
         target_yaws = []
         target_dts = []
 
-        enu_poses = []
+        poses = []
         for dtheta in theta_vec:
             theta = theta0 + dtheta
             p = Pose()
             p.position.x = center.position.x + radius * math.cos(theta)
             p.position.y = center.position.y + radius * math.sin(theta)
             p.position.z = center.position.z
-            enu_poses.append(p)
+            poses.append(p)
 
-        for i, p in enumerate(enu_poses):
-            ned_p = Pose()
-            ned_p.position.x = p.position.x
-            ned_p.position.y = p.position.y
-            ned_p.position.z = -p.position.z
-            ned_poses.append(ned_p)
-
+        for i, p in enumerate(poses):
             vel = Twist()
             if i > 0:
-                prev = enu_poses[i-1]
+                prev = poses[i-1]
                 dx = (p.position.x - prev.position.x)
                 dy = (p.position.y - prev.position.y)
                 dz = -(p.position.z - prev.position.z)
@@ -535,16 +642,17 @@ def generate_loiter_formation(center: Pose, radius: float, n_drones=3, n_points=
                 vel.linear.y = 0.0
                 vel.linear.z = 0.0
                 target_dts.append(0.0)
-            ned_vels.append(vel)
+            vels.append(vel)
 
-            dx_c = center_ned.position.x - ned_p.position.x
-            dy_c = center_ned.position.y - ned_p.position.y
-            yaw = math.atan2(dy_c, dx_c)
+            dx_c = center.position.x - p.position.x
+            dy_c = center.position.y - p.position.y
+            yaw = math.atan2(dx_c, dy_c)
             target_yaws.append(yaw)
 
-        trajectories.append([ned_poses, ned_vels, target_yaws, target_dts])
+        trajectories.append([poses, vels, target_yaws, target_dts])
 
     return trajectories
+
 
 def dist2(a: Pose, b: Pose) -> float:
     return math.hypot(a.position.x - b.position.x, a.position.y - b.position.y)
@@ -556,3 +664,37 @@ def asign_circunference_points(drone_poses: list[Pose], target_poses: list[Pose]
     first_target = np.argmax(dist_bd)
     first_drone = dist_bd_index[first_target]
     return [[first_drone, first_target], [1-first_drone, 1-first_target]]
+
+
+def square_bounds_from_circle(pose: Pose, r: float):
+    x_center = pose.position.x
+    y_center = pose.position.y
+
+    xmin = x_center - r
+    xmax = x_center + r
+    ymin = y_center - r
+    ymax = y_center + r
+
+    return [xmin, ymin],[xmax, ymax]
+
+def plot_pose_list(poses: list[Pose]):
+    
+    xs = [p.position.x for p in poses]
+    ys = [p.position.y for p in poses]
+    zs = [p.position.z for p in poses]
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Puntos individuales
+    ax.scatter(xs, ys, zs)
+
+    # Opcional: conectar los puntos para ver la trayectoria
+    ax.plot(xs, ys, zs)
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title('Trayectoria 3D de las poses')
+
+    plt.show()

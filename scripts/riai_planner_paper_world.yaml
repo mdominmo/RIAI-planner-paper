@@ -17,7 +17,7 @@ UAS:
   models:
   - name: "x500_mono_cam"
     autostart: 4001
-    number: 3
+    number: 2
   - name: "rc_cessna"
     autostart: 4003
     number: 0

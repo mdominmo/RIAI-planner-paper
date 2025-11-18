@@ -14,6 +14,7 @@
   <depend>ultralytics</depend>
   <depend>opencv-python</depend>
   <depend>numpy</depend>
+  <depend>planning</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
