@@ -1,6 +1,8 @@
 from geometry_msgs.msg import Pose
 from .utils import generate_loiter_formation, square_bounds_from_circle
 from .multi_rrt_star_planner import MultiRRTStarPlanner
+from .hungarian_tasks_planner import HungarianTasksPlanner
+from .assignation_methods import AssignationMethods
 import numpy as np
 
 
@@ -34,7 +36,8 @@ class Planner():
         self._time_tol = time_tol
         self._cylinder_height = cylinder_height
         self._obstacle_radius = obstacle_radius
-        self.planner = MultiRRTStarPlanner()
+        self.rtt_planner = MultiRRTStarPlanner()
+        self.hungarian_planner = HungarianTasksPlanner()
 
         self._mission_frame.position.z = mission_height
         self.perception_trajectories = generate_loiter_formation(
@@ -54,6 +57,48 @@ class Planner():
 
 
     def get_initial_trajectory(self, vehicle_poses, obstacles_poses):
+    
+        start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
+        goal_poses = [self.perception_trajectories[n][0][0] for n in range(len(vehicle_poses))]
+        goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
+        
+        return self.multi_rrt_plan(start_poses, goal_poses, self._model_static_obstacles(obstacles_poses))
+  
+
+    def get_perception_trajectory(self):
+        return self.perception_trajectories
+
+
+    def get_tasks_planning(
+        self, 
+        vehicle_poses, 
+        goal_poses, 
+        obstacles_poses,
+        plan_type
+    ):  
+        match plan_type:
+            
+            case AssignationMethods.ONLY_RRT_STAR:
+                start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
+                goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
+
+                return self.multi_rrt_plan(start_poses, goal_poses, self._model_static_obstacles(obstacles_poses))
+            
+            #TODO
+            case AssignationMethods.RRT_STAR_HUNGARIAN:
+                start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
+                goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
+
+                return self.multi_rrt_plan(start_poses, goal_poses, self._model_static_obstacles(obstacles_poses))
+            
+            case _:
+                start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
+                goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
+                
+                return self.multi_rrt_plan(start_poses, goal_poses, self._model_static_obstacles(obstacles_poses))
+            
+
+    def _model_static_obstacles(self, obstacles_poses):
         
         obstacles = []
         for obstacle in obstacles_poses:
@@ -67,43 +112,13 @@ class Planner():
 
             obstacle = np.column_stack([x_obs, y_obs, z_obs, t_obs, r_obs])
             obstacles.append(obstacle)
-
-        start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
-        goal_poses = [self.perception_trajectories[n][0][0] for n in range(len(vehicle_poses))]
-        goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
         
-        trajectories = self.plan(start_poses, goal_poses, obstacles)
-        return trajectories
+        return obstacles
 
 
-    def get_perception_trajectory(self):
-        return self.perception_trajectories
-
-
-    def get_execution_planning(self, vehicle_poses, goal_poses, obstacles_poses):
-
-        obstacles = []
-        for obstacle in obstacles_poses:
-            delta_t = .5
-            t_obs = np.arange(0, 70 + delta_t, delta_t)
-            n_points = len(t_obs)
-            x_obs = np.full(n_points, obstacle.position.x)
-            y_obs = np.full(n_points, obstacle.position.y)
-            z_obs = np.full(n_points, self._cylinder_height)
-            r_obs = np.full(n_points, self._obstacle_radius)
-
-            obstacle = np.column_stack([x_obs, y_obs, z_obs, t_obs, r_obs])
-            obstacles.append(obstacle)
-
-        start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
-        goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
-
-        return self.plan(start_poses, goal_poses, obstacles)
-    
-
-    def plan(self, start_poses, goal_poses, obstacles):
-        return self.planner.plan(
-            start_poses,
+    def multi_rrt_plan(self, start_poses, goal_poses, obstacles):
+        return self.rtt_planner.plan(
+            start_poses,        
             goal_poses,
             self._lower_limit,
             self._upper_limit,

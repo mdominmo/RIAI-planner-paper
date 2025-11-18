@@ -50,7 +50,7 @@ class MultiRRTStarPlanner():
                     "tree": tree,
                     "n_iterations": n_iterations,
                     "final_cost": final_cost,
-                    "final_time": final_time #TODO
+                    "final_time": final_time 
                 }
                 
         return results

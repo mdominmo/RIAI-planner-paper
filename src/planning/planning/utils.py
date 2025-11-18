@@ -53,15 +53,15 @@ def bspline_trajectory(poses, n_points=200, smoothing=0.0, degree=3, periodic=Fa
     """
 
     result = []
-    dt = .0
 
     if len(poses) == 1:
         result.append({
             "pose": poses[0],
             "yaw": float('nan'),
-            "vel": float('nan')
+            "vel": float('nan'),
+            "dt": float('nan')
         })
-        return result, dt
+        return result
     else: 
         pts = np.array([[p.position.x, p.position.y, p.position.z] for p in densify_waypoints(poses, 5)]).T
         
@@ -76,10 +76,7 @@ def bspline_trajectory(poses, n_points=200, smoothing=0.0, degree=3, periodic=Fa
             x, y, z = out[0][i], out[1][i], out[2][i]
             dx, dy, dz = dout[0][i], dout[1][i], dout[2][i]
 
-            # Calcular yaw
             yaw = math.atan2(dy, dx)
-
-            # Vector tangente normalizado
             norm = math.sqrt(dx**2 + dy**2 + dz**2)
             if norm > 1e-6:
                 vx, vy, vz = (dx / norm * speed,
@@ -88,39 +85,31 @@ def bspline_trajectory(poses, n_points=200, smoothing=0.0, degree=3, periodic=Fa
             else:
                 vx, vy, vz = 0.0, 0.0, 0.0
 
-            # Pose con yaw guardado en orientation.z
             p = Pose()
             p.position.x = x
             p.position.y = y
             p.position.z = z
-            p.orientation.x = 0.0
-            p.orientation.y = 0.0
-            p.orientation.z = yaw
-            p.orientation.w = 0.0
 
             vel = Twist()   
             vel.linear.x = vx
             vel.linear.y = vy 
             vel.linear.z = vz
-
-            result.append({
-                "pose": p,
-                "yaw": yaw,
-                "vel": vel
-            })
-
-            # Sumar distancia para longitud total
+            
             if i > 0:
                 dx_seg = out[0][i] - out[0][i-1]
                 dy_seg = out[1][i] - out[1][i-1]
                 dz_seg = out[2][i] - out[2][i-1]
                 seg_length = math.sqrt(dx_seg**2 + dy_seg**2 + dz_seg**2)
-                total_length += seg_length
+                dt = seg_length / speed
 
-        # Tiempo medio entre puntos
-        dt = total_length / (speed * (n_points - 1))
+                result.append({
+                    "pose": p,
+                    "yaw": yaw,
+                    "vel": vel,
+                    "dt": dt
+                })
 
-        return result, dt
+        return result
 
 
 def enu_ned_trajectories(trajectories):
