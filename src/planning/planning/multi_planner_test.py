@@ -9,12 +9,12 @@ Z_BASE = 0.0
 BIAS_PROB = .8
 SPACE_COEF = .2
 TIME_COEF = .8
-SPATIAL_TOL = 1.5
+SPATIAL_TOL = 0.9
 TIME_TOL = 50.0
 SPEED = 5.0
 LIMIT=True
 STEP_SIZE = 1.0
-N_STEPS = 2000
+N_STEPS = 4000
 
 upper_limit = np.array([20.0, 20.0, 1.5])
 lower_limit = np.array([0.0, 0.0, 0.0])

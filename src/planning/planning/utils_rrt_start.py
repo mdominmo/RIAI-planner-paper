@@ -1,5 +1,6 @@
-from rtt_star_planner import RttStarPlanner 
+from rtt_star_planner import RttStarPlanner, Node
 import numpy as np
+from typing import List
 
 
 
@@ -148,10 +149,23 @@ def choose_and_plan(starts, goals,
         assignments.append((best_key, best_cost))
 
         best_goal_node = current_results[best_key]["goal_node"]
+
         if best_goal_node is not None:
+            best_goal_node = prune_path_nodes(
+                best_goal_node,
+                obstacles,
+                lower_limit,
+                upper_limit,
+                SPACE_COEF,
+                TIME_COEF,
+                STEP_SIZE
+            )
+
+            best_results[best_key]["goal_node"] = best_goal_node
+
             path_obstacle = path_to_obstacle(best_goal_node, OBSTACLE_RADIUS)
             obstacles.append(path_obstacle)
-            print(f"   Añadido path de {best_key} como nuevo obstáculo dinámico.")
+
 
         start_name, goal_name = best_key.split(" -> ")
 
@@ -165,3 +179,65 @@ def choose_and_plan(starts, goals,
         print(f"{key}: coste = {cost:.4f}")
 
     return best_results
+
+
+def extract_path_nodes(goal_node: Node) -> List[Node]:
+    """Devuelve la lista de nodos desde start hasta goal_node."""
+    path = []
+    n = goal_node
+    while n is not None:
+        path.append(n)
+        n = n._parent
+    path.reverse()
+    return path
+
+
+def prune_path_nodes(
+    goal_node: Node,
+    obstacles: List[np.ndarray],
+    lower_limit: np.ndarray,
+    upper_limit: np.ndarray,
+    space_coef: float,
+    time_coef: float,
+    step_size: float = 1.0
+) -> Node:
+    """
+    Poda el path eliminando nodos intermedios si el atajo entre vecinos
+    no colisiona. Devuelve el NUEVO goal_node cuyo _parent-chain es el
+    path podado.
+    """
+
+    if goal_node is None:
+        return None
+
+    checker = RttStarPlanner(
+        lower_limit=lower_limit,
+        upper_limit=upper_limit,
+        step_size=step_size,
+        n_steps=1,
+        space_coef=space_coef,
+        time_coef=time_coef
+    )
+
+    path = extract_path_nodes(goal_node)
+    if len(path) <= 2:
+        return goal_node
+
+    i = 1
+    while i < len(path) - 1:
+        prev_node = path[i-1]
+        next_node = path[i+1]
+
+        if checker._check_restrictions(next_node, prev_node, obstacles):
+            path.pop(i) 
+        else:
+            i += 1
+
+    path[0]._parent = None
+    path[0]._cost = 0.0
+
+    for k in range(1, len(path)):
+        path[k].set_parent(path[k-1], space_coef, time_coef)
+
+    new_goal_node = path[-1]
+    return new_goal_node
