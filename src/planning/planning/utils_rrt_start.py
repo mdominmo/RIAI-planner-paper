@@ -1,18 +1,40 @@
-from rtt_star_planner import RttStarPlanner, Node
+from typing import List, Tuple, Dict, Optional, TypedDict
 import numpy as np
-from typing import List
+from rtt_star_planner import RttStarPlanner, Node
 
 
+StartGoalList = List[Tuple[str, np.ndarray]]
+ObstacleList = List[np.ndarray]
 
-def run_all_combinations(starts, goals,
-                         lower_limit, upper_limit,
-                         STEP_SIZE, N_STEPS,
-                         SPACE_COEF, TIME_COEF,
-                         SPEED, obstacles,
-                         BIAS_PROB, LIMIT,
-                         SPATIAL_TOL, TIME_TOL):
+
+class PlanResult(TypedDict):
+    start: np.ndarray
+    goal: np.ndarray
+    goal_node: Optional[Node]
+    tree: List[Node]
+    n_iterations: int
+    final_cost: Optional[float]
+    final_time: Optional[float]
+
+
+def run_all_combinations(
+    starts: StartGoalList,
+    goals: StartGoalList,
+    lower_limit: np.ndarray,
+    upper_limit: np.ndarray,
+    STEP_SIZE: float,
+    N_STEPS: int,
+    SPACE_COEF: float,
+    TIME_COEF: float,
+    SPEED: float,
+    obstacles: ObstacleList,
+    BIAS_PROB: float,
+    LIMIT: bool,
+    SPATIAL_TOL: float,
+    TIME_TOL: float
+) -> Dict[str, PlanResult]:
     
-    results = {}
+    results: Dict[str, PlanResult] = {}
 
     for s_name, s in starts:
         for g_name, g in goals:
@@ -26,16 +48,19 @@ def run_all_combinations(starts, goals,
                 TIME_COEF
             )
 
-            goal_node, tree, n_iterations = planner.plan(s, g, SPEED, obstacles, BIAS_PROB, LIMIT, SPATIAL_TOL, TIME_TOL)
+            goal_node, tree, n_iterations = planner.plan(
+                s, g, SPEED, obstacles, BIAS_PROB, LIMIT, SPATIAL_TOL, TIME_TOL
+            )
 
             key = f"{s_name} -> {g_name}"
 
             if goal_node is not None:
-                final_cost = goal_node._cost
-                final_time = goal_node._position[3]
+                final_cost: Optional[float] = goal_node._cost
+                final_time: Optional[float] = goal_node._position[3]
             else:
                 final_cost = None
                 final_time = None
+
             results[key] = {
                 "start": s,
                 "goal": g,
@@ -43,7 +68,7 @@ def run_all_combinations(starts, goals,
                 "tree": tree,
                 "n_iterations": n_iterations,
                 "final_cost": final_cost,
-                "final_time": final_time #TODO
+                "final_time": final_time  # TODO
             }
 
             print(f"✔ Terminada: {key}")
@@ -58,7 +83,8 @@ def run_all_combinations(starts, goals,
 
     return results
 
-def path_to_obstacle(goal_node, radius):
+
+def path_to_obstacle(goal_node: Node, radius: float) -> np.ndarray:
     """
     Convierte el camino desde el start hasta goal_node
     en un "obstáculo dinámico" de radio `radius`.
@@ -66,53 +92,62 @@ def path_to_obstacle(goal_node, radius):
     Devuelve un array de shape (N, 5):
     [x, y, z, t, r]
     """
-    # Recorrer el path desde goal hasta el inicio
-    path = []
-    n = goal_node
+    path: List[np.ndarray] = []
+    n: Optional[Node] = goal_node
     while n is not None:
         path.append(n._position.copy())
         n = n._parent
 
-    # Invertimos para tenerlo en orden temporal creciente
     path.reverse()
-    path = np.array(path)  # shape (N, 4) -> [x, y, z, t]
+    path_arr = np.array(path)  # shape (N, 4) -> [x, y, z, t]
 
-    xs = path[:, 0]
-    ys = path[:, 1]
-    zs = path[:, 2]
-    ts = path[:, 3]
+    xs = path_arr[:, 0]
+    ys = path_arr[:, 1]
+    zs = path_arr[:, 2]
+    ts = path_arr[:, 3]
     rs = np.full_like(ts, radius)
 
     obstacle = np.column_stack([xs, ys, zs, ts, rs])
     return obstacle
 
 
-def choose_and_plan(starts, goals,
-                    lower_limit, upper_limit,
-                    STEP_SIZE, N_STEPS,
-                    SPACE_COEF, TIME_COEF,
-                    SPEED, obstacles,
-                    BIAS_PROB, LIMIT,
-                    SPATIAL_TOL, TIME_TOL,CYLINDER_HEIGHT,OBSTACLE_RADIUS):
+def choose_and_plan(
+    starts: StartGoalList,
+    goals: StartGoalList,
+    lower_limit: np.ndarray,
+    upper_limit: np.ndarray,
+    STEP_SIZE: float,
+    N_STEPS: int,
+    SPACE_COEF: float,
+    TIME_COEF: float,
+    SPEED: float,
+    obstacles: ObstacleList,
+    BIAS_PROB: float,
+    LIMIT: bool,
+    SPATIAL_TOL: float,
+    TIME_TOL: float,
+    CYLINDER_HEIGHT: float,
+    OBSTACLE_RADIUS: float
+) -> Dict[str, PlanResult]:
     """
     Devuelve best result que es un diccionario con esto por cada "Start X -> Goal Y" 
 
     {
-                "start": np.ndarray        # posición inicial 4D [x, y, z, t]
-                "goal": np.ndarray         # posición objetivo 4D [x, y, z, t]
-                "goal_node": Node          # nodo final alcanzado en el árbol
-                "tree": List[Node]         # todos los nodos generados para esa ruta
-                "n_iterations": int        # iteraciones realizadas
-                "final_cost": float | None # coste total del camino (si existe)
-                "final_time": float | None # tiempo final t del nodo objetivo
+        "start": np.ndarray        # posición inicial 4D [x, y, z, t]
+        "goal": np.ndarray         # posición objetivo 4D [x, y, z, t]
+        "goal_node": Node          # nodo final alcanzado en el árbol
+        "tree": List[Node]         # todos los nodos generados para esa ruta
+        "n_iterations": int        # iteraciones realizadas
+        "final_cost": float | None # coste total del camino (si existe)
+        "final_time": float | None # tiempo final t del nodo objetivo
      }
     """
 
-    remaining_starts = list(starts)
-    remaining_goals = list(goals)
+    remaining_starts: StartGoalList = list(starts)
+    remaining_goals: StartGoalList = list(goals)
 
-    best_results = {} 
-    assignments = [] 
+    best_results: Dict[str, PlanResult] = {}
+    assignments: List[Tuple[str, float]] = []
 
     step = 1
     while remaining_starts and remaining_goals:
@@ -130,8 +165,8 @@ def choose_and_plan(starts, goals,
             SPATIAL_TOL, TIME_TOL
         )
 
-        best_key = None
-        best_cost = np.inf
+        best_key: Optional[str] = None
+        best_cost: float = np.inf
 
         for key, data in current_results.items():
             cost = data["final_cost"]
@@ -166,7 +201,6 @@ def choose_and_plan(starts, goals,
             path_obstacle = path_to_obstacle(best_goal_node, OBSTACLE_RADIUS)
             obstacles.append(path_obstacle)
 
-
         start_name, goal_name = best_key.split(" -> ")
 
         remaining_starts = [s for s in remaining_starts if s[0] != start_name]
@@ -183,8 +217,8 @@ def choose_and_plan(starts, goals,
 
 def extract_path_nodes(goal_node: Node) -> List[Node]:
     """Devuelve la lista de nodos desde start hasta goal_node."""
-    path = []
-    n = goal_node
+    path: List[Node] = []
+    n: Optional[Node] = goal_node
     while n is not None:
         path.append(n)
         n = n._parent
@@ -194,13 +228,13 @@ def extract_path_nodes(goal_node: Node) -> List[Node]:
 
 def prune_path_nodes(
     goal_node: Node,
-    obstacles: List[np.ndarray],
+    obstacles: ObstacleList,
     lower_limit: np.ndarray,
     upper_limit: np.ndarray,
     space_coef: float,
     time_coef: float,
     step_size: float = 1.0
-) -> Node:
+) -> Optional[Node]:
     """
     Poda el path eliminando nodos intermedios si el atajo entre vecinos
     no colisiona. Devuelve el NUEVO goal_node cuyo _parent-chain es el
@@ -229,7 +263,7 @@ def prune_path_nodes(
         next_node = path[i+1]
 
         if checker._check_restrictions(next_node, prev_node, obstacles):
-            path.pop(i) 
+            path.pop(i)
         else:
             i += 1
 
