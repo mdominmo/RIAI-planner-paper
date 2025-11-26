@@ -15,8 +15,8 @@ UAS:
     Y: 0.0
   leader_id: "x500_mono_cam_1"
   models:
-  - name: "x500_mono_cam"
-    autostart: 4001
+  - name: "x500_vision"
+    autostart: 4005
     number: 2
   - name: "rc_cessna"
     autostart: 4003

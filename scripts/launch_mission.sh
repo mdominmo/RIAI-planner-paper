@@ -18,10 +18,6 @@ source ../install/setup.bash
 
 ros2 run mission mission_node mission_node 
 
-
-
-
-
 echo "Setting up the simulation environment..."
 PIDS=()
 conf_file="riai_planner_paper_world.yaml"

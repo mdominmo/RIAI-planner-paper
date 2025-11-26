@@ -11,8 +11,6 @@ import cv2
 from planning.planner import Planner
 from planning.utils import enu_ned, enu_ned_trajectories, bspline_trajectory, plot_pose_list
 from riai_msgs.srv import Tracking
-from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
-from tf2_geometry_msgs import do_transform_pose
 
 
 ASIGNATION_METHODS = {
@@ -32,16 +30,16 @@ class MissionNode(Node):
         self.declare_parameter('plan_type', 0)
         self.declare_parameter('targets', 4)
         self.declare_parameter("vehicle_ids", [1,2])
-        self.declare_parameter('n_points', 400)
+        self.declare_parameter('n_points', 200)
         self.declare_parameter('mission_frame', [108.28299713134766, -94.181564331054688, 1.9263170957565308])
         self.declare_parameter('mission_radius', 5.0)
         self.declare_parameter('mission_height', 8.0)
         self.declare_parameter('step_size', 1.0)
         self.declare_parameter('n_steps', 2000)
-        self.declare_parameter('space_coef', .6)
-        self.declare_parameter('time_coef', .4)
+        self.declare_parameter('space_coef', .8)
+        self.declare_parameter('time_coef', .2)
         self.declare_parameter('avg_speed', 1.0)
-        self.declare_parameter('spatial_tol', 5.0)
+        self.declare_parameter('spatial_tol', .5)
         self.declare_parameter('time_tol', 100.0)
         self.declare_parameter('cylinder_height', 1.0)
         self.declare_parameter('cylinder_radius', 1.0)
@@ -74,8 +72,6 @@ class MissionNode(Node):
         self.rgb_subs = []
         self.detected_ids = set()
         self.planner = None
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.configure()
 
@@ -88,18 +84,17 @@ class MissionNode(Node):
 
     def start_formation(self):
 
+        self.multi_offboard_controller.offboard_mode_all()
         arm_future = self.multi_offboard_controller.arm_all()
         while not arm_future.done():
-            rclpy.spin_once(self)
-
-        self.multi_offboard_controller.offboard_mode_all()
+            rclpy.spin_once(self, timeout_sec=2.0)
         self.multi_offboard_controller.check_offboard()
         self.get_logger().info(f"Vehicles waiting for offboard mode.")
 
         self.get_logger().info(f"Vehicles taking off.")
         takeoff_future = self.multi_offboard_controller.take_off_all(10.0)
         while not takeoff_future.done():
-            rclpy.spin_once(self)
+            rclpy.spin_once(self, timeout_sec=2.0)
 
         trajectories = []
         while len(trajectories) != len(self.vehicle_ids):
@@ -112,7 +107,7 @@ class MissionNode(Node):
             self.transform_to_local_frame_trajectory(trajectories)
         )
         while not future.done():
-            rclpy.spin_once(self)
+            rclpy.spin_once(self, timeout_sec=2.0)
 
 
     def run_perception(self):
@@ -125,7 +120,7 @@ class MissionNode(Node):
             self.transform_to_local_frame_trajectory(self.planner.get_perception_trajectory())  
         )
         while not future.done():
-            rclpy.spin_once(self)
+            rclpy.spin_once(self, timeout_sec=2.0)
 
         end_time = time.perf_counter()
         elapsed = end_time - start_time
@@ -136,25 +131,29 @@ class MissionNode(Node):
     def execute_mission(self, plan_type: int): 
         
         targets_poses = [self.target_poses[int(id)] for id in self.detected_ids]
-        trajectories = self.planner.get_tasks_planning(
-            self.get_vehicle_poses(), 
-            targets_poses,
-            self.obstacle_poses,
-            self.plan_type
-        )
-        self.get_logger().info(f"Executing mission.")
         
+        trajectories = []
+        while len(trajectories) != len(self.vehicle_ids):
+            self.get_logger().info(f"Computing execution trajectory.")
+            trajectories = self.planner.get_tasks_planning(
+                self.get_vehicle_poses(), 
+                targets_poses,
+                self.obstacle_poses,
+                self.plan_type
+            )
+
+        self.get_logger().info(f"Executing mission.")
         start_time = time.perf_counter()
         future = self.multi_offboard_controller.trajectory_following(
             range(len(self.vehicle_ids)),
             self.transform_to_local_frame_trajectory(trajectories)
         )        
         while not future.done():
-            rclpy.spin_once(self)
+            rclpy.spin_once(self, timeout_sec=2.0)
         
         future = self.multi_offboard_controller.land_all()
         while not future.done():
-            rclpy.spin_once(self)
+            rclpy.spin_once(self, timeout_sec=2.0)
         
         end_time = time.perf_counter()
         elapsed = end_time - start_time
@@ -170,16 +169,8 @@ class MissionNode(Node):
         in_map_poses = []
         for uav_id, controller in enumerate(self.multi_offboard_controller.controllers, start=1):
             local_pose = enu_ned(controller.state_manager.state_repositories[States.LOCAL_POSITION].get().get_pose())
-            try:
-                t = self.tf_buffer.lookup_transform(
-                    "world",                   
-                    f"uav_{uav_id}/local_frame", 
-                    rclpy.time.Time()
-                )
-                in_map_poses.append(do_transform_pose(local_pose, t))
-            except (LookupException, ConnectivityException, ExtrapolationException):
-                self.get_logger().warn(f"TF for UAV {uav_id} not available yet.")
-                continue
+            in_map_poses.append(local_pose)
+           
         return in_map_poses
 
 
@@ -195,6 +186,9 @@ class MissionNode(Node):
         
         response = future.result()
         self.target_poses = response.target_poses
+        for p in self.target_poses:
+            p.position.z = 6.0
+        
         self.obstacle_poses = response.obstacle_poses
 
 
@@ -217,18 +211,8 @@ class MissionNode(Node):
 
     
     def transform_to_local_frame_trajectory(self, trajectories):
-
-        for uav_id, trajectory in enumerate(trajectories):
-            try:
-                t = self.tf_buffer.lookup_transform(                   
-                    f"uav_{uav_id+1}/local_frame", 
-                    "world",
-                    rclpy.time.Time()
-                )
-            except (LookupException, ConnectivityException, ExtrapolationException):
-                self.get_logger().warn(f"TF for UAV {uav_id} not available yet.")
-            trajectory[0] = [do_transform_pose(pose,t) for pose in trajectory[0]]
-        return self.smooth_trajectories(enu_ned_trajectories(trajectories))
+        trajectories = self.smooth_trajectories(enu_ned_trajectories(trajectories))
+        return trajectories 
 
 
     def smooth_trajectories(self, trajectories):
@@ -236,7 +220,7 @@ class MissionNode(Node):
             smooth_poses = bspline_trajectory(
                 trajectory[0],
                 self.n_points,
-                smoothing=10.0,
+                smoothing=.0,
                 degree=3,
                 periodic=False,
                 speed=self.avg_speed)
@@ -263,7 +247,7 @@ class MissionNode(Node):
         for i in self.vehicle_ids:
             self.rgb_subs.append(self.create_subscription(
                 CompressedImage,
-                f"/world/riai_planner_paper_world/model/x500_mono_cam_{i}/link/mono_cam/base_link/sensor/camera/image/compressed",
+                f"/world/riai_planner_paper_world/model/x500_vision_{i}/link/mono_cam/base_link/sensor/camera/image/compressed",
                 self.image_callback,
                 10
             ))

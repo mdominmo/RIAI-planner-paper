@@ -33,7 +33,7 @@ PIDS=()
 conf_file="riai_planner_paper_world.yaml"
 
 export PX4_GZ_WORLD=$(yq '.world.type' "$conf_file")
-export GZ_SIM_RESOURCE_PATH="${HOME}/repositories/ai_safe/ai-safe-sim/gz_assets/models/:${HOME}/repositories/ai_safe/ai-safe-sim/PX4-Autopilot/Tools/simulation/gz/models/"
+export GZ_SIM_RESOURCE_PATH="${HOME}/repositories/ai_safe/ai-safe-sim/gz_assets/models/"
 PX4_FOLDER="${HOME}/repositories/ai_safe/ai-safe-sim/PX4-Autopilot"
 declare -A swarm_pose
 
@@ -68,6 +68,12 @@ if [ "$MODE" != "-e" ]; then
             swarm_pose["y"]=$((y_0 - vehicle_instance * 2))
             export PX4_UXRCE_DDS_NS="px4_${vehicle_instance}"
             export PX4_GZ_MODEL_POSE="${swarm_pose["x"]},${swarm_pose["y"]},${swarm_pose["z"]},${swarm_pose["R"]},${swarm_pose["P"]},${swarm_pose["Y"]}"
+            
+            export PX4_PARAM_EKF2_EV_CTRL=11
+            export PX4_PARAM_EKF2_HGT_REF=3
+            export PX4_PARAM_EKF2_GPS_CTRL=0
+            export PX4_PARAM_EKF2_BARO_CTRL=0
+            export PX4_PARAM_EKF2_RNG_CTRL=0
 
             run_cmd "${PX4_FOLDER}/build/px4_sitl_default/bin/px4 -i $vehicle_instance"
             sleep 5
