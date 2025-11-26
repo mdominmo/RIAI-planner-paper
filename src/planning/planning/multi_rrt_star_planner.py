@@ -110,7 +110,7 @@ class MultiRRTStarPlanner():
         remaining_goals = list(goals)
 
         best_results = {} 
-        assignments = [] 
+        # assignments = [] 
 
         step = 1
         while remaining_starts and remaining_goals:
@@ -136,12 +136,32 @@ class MultiRRTStarPlanner():
             if best_key is None:
                 break
 
-            best_results[best_key] = current_results[best_key]
-            assignments.append((best_key, best_cost))
+            # best_results[best_key] = current_results[best_key]
+            chosen = current_results[best_key]
 
-            best_goal_node = current_results[best_key]["goal_node"]
-            if best_goal_node is not None:
-                path_obstacle = self.path_to_obstacle(best_goal_node, OBSTACLE_RADIUS)
+            goal_node = chosen["goal_node"]
+            planner = RttStarPlanner(
+                lower_limit, upper_limit,
+                STEP_SIZE, N_STEPS,
+                SPACE_COEF, TIME_COEF
+            )
+            planner._tree = chosen["tree"]
+
+            pruned_goal = self.prune_path(goal_node, planner, obstacles)
+
+            chosen["goal_node"] = pruned_goal
+            chosen["final_cost"] = pruned_goal._cost
+            chosen["final_time"] = pruned_goal._position[3]
+
+            best_results[best_key] = chosen
+            # assignments.append((best_key, best_cost))
+
+
+            
+
+            # best_goal_node = current_results[best_key]["goal_node"]
+            if pruned_goal is not None:
+                path_obstacle = self.path_to_obstacle(pruned_goal, OBSTACLE_RADIUS)
                 obstacles.append(path_obstacle)
 
             start_name, goal_name = best_key.split(" -> ")
@@ -151,6 +171,53 @@ class MultiRRTStarPlanner():
             step += 1
 
         return best_results
+    
+    def prune_path(goal_node, planner, obstacles):
+        """
+        Recibe goal_node y elimina nodos intermedios siempre que el segmento directo
+        entre puntos consecutivos no tenga colisión.
+        Reescribe los parents y recalcula costes.
+
+        Devuelve el nodo final (goal_node) con el nuevo parent-chain.
+        """
+
+        # 1) obtener lista de nodos
+        path = []
+        n = goal_node
+        while n is not None:
+            path.append(n)
+            n = n._parent
+        path.reverse()  # orden correcto
+
+        # 2) ejecutamos el podado greedy
+        pruned = [path[0]]
+        i = 0
+        while True:
+            j = i + 2
+            last_valid = i + 1
+
+            while j < len(path):
+                if planner._check_restrictions(path[j], pruned[-1], obstacles):
+                    last_valid = j
+                    j += 1
+                else:
+                    break
+
+            pruned.append(path[last_valid])
+
+            if last_valid == len(path)-1:
+                break
+
+            i = last_valid
+
+        # 3) reconstruir parent-chain y recalcular costes
+        pruned[0]._parent = None
+        pruned[0]._cost = 0.0
+
+        for k in range(1, len(pruned)):
+            pruned[k].set_parent(pruned[k-1], planner._space_coef, planner._time_coef)
+
+        return pruned[-1]  # nuevo goal_node podado
 
 
     def plan(
@@ -209,5 +276,4 @@ class MultiRRTStarPlanner():
                 dts
             ]
         
-        return trajectories
         return trajectories
