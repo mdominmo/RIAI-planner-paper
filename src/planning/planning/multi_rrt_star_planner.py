@@ -4,36 +4,103 @@ from geometry_msgs.msg import Pose, Twist
 
 
 class MultiRRTStarPlanner():
-    def __init__(self):
-        pass
+    def __init__(
+            self,
+            lower_limit, 
+            upper_limit,
+            step_size, 
+            n_steps,
+            space_coef, 
+            time_coef,
+            theta_gamma = 1.1
+        ):
+        self._lower_limit = lower_limit
+        self._upper_limit = upper_limit
+        self._step_size = step_size
+        self._theta_gamma = theta_gamma
+        self._n_steps = n_steps
+        self._space_coef = space_coef
+        self._time_coef = time_coef
+
+        self._planner = RttStarPlanner(
+            self._lower_limit,
+            self._upper_limit,
+            self._step_size,
+            self._n_steps,
+            self._space_coef,
+            self._time_coef
+        )
 
 
-    def run_all_combinations(self, starts, goals,
-                            lower_limit, upper_limit,
-                            STEP_SIZE, N_STEPS,
-                            SPACE_COEF, TIME_COEF,
-                            SPEED, obstacles,
-                            BIAS_PROB, LIMIT,
-                            SPATIAL_TOL, TIME_TOL):
+    def plan_paths(
+            self,
+            start_poses, 
+            goal_poses,
+            speed, 
+            obstacles,
+            bias_prob, 
+            limit,
+            spatial_tol, 
+            time_tol,
+            obstacle_radius
+        ):
+
+        dt = .5
+        trajectories = [[] for _ in range(len(start_poses))]
+        for agent_idx, start_pose, goal_pose in enumerate(zip(start_poses, goal_poses)):
+            
+            poses = []
+            dts = [dt*n for n in range(len(poses))]
+            velocities = [Twist() for _ in range(len(poses))]
+            yaws = [float('nan') for _ in range(len(poses))]
+
+            goal_node, _, _ = self._planner.plan(
+                start_pose, goal_pose, 
+                speed, obstacles, 
+                bias_prob, limit, 
+                spatial_tol, time_tol
+            )
+            
+            while(goal_node._parent is not None):
+                p = Pose()
+                p.position.x = node._position[0]
+                p.position.y = node._position[1]
+                p.position.z = node._position[2]
+                poses.append(p)
+                node = node._parent
+
+            trajectories[agent_idx] = [
+                poses[::-1],
+                velocities,
+                yaws,
+                dts
+            ]
+            obstacles.append(
+                self.path_to_obstacle(
+                    goal_node, obstacle_radius)
+            )
+
+        return trajectories
+            
+
+    def run_all_combinations(
+            self, 
+            starts, goals,      
+            speed, obstacles,
+            bias_prob, limit,
+            spatial_tol, time_tol
+        ):
         
         results = {}
 
         for s_name, s in starts:
             for g_name, g in goals:
 
-                planner = RttStarPlanner(
-                    lower_limit,
-                    upper_limit,
-                    STEP_SIZE,
-                    N_STEPS,
-                    SPACE_COEF,
-                    TIME_COEF
-                )
-                goal_node, tree, n_iterations = planner.plan(
+                goal_node, tree, n_iterations = self._planner.plan(
                     s, g, 
-                    SPEED, obstacles, 
-                    BIAS_PROB, LIMIT, 
-                    SPATIAL_TOL, TIME_TOL
+                    speed, obstacles, 
+                    bias_prob, limit, 
+                    spatial_tol, time_tol
                 )
                 key = f"{s_name} -> {g_name}"
 
@@ -85,13 +152,19 @@ class MultiRRTStarPlanner():
         return obstacle
 
 
-    def choose_and_plan(self, starts, goals,
-                        lower_limit, upper_limit,
-                        STEP_SIZE, N_STEPS,
-                        SPACE_COEF, TIME_COEF,
-                        SPEED, obstacles,
-                        BIAS_PROB, LIMIT,
-                        SPATIAL_TOL, TIME_TOL,CYLINDER_HEIGHT,OBSTACLE_RADIUS):
+    def choose_and_plan(
+            self, 
+            starts, 
+            goals,
+            speed, 
+            obstacles,
+            bias_prob, 
+            limit,
+            spatial_tol, 
+            time_tol,
+            obstacle_height,
+            obstacle_radius
+        ):
         """
         Devuelve best result que es un diccionario con esto por cada "Start X -> Goal Y" 
 
@@ -105,25 +178,19 @@ class MultiRRTStarPlanner():
                     "final_time": float | None # tiempo final t del nodo objetivo
         }
         """
-
         remaining_starts = list(starts)
         remaining_goals = list(goals)
 
         best_results = {} 
-        # assignments = [] 
 
         step = 1
         while remaining_starts and remaining_goals:
             current_results = self.run_all_combinations(
                 remaining_starts, remaining_goals,
-                lower_limit, upper_limit,
-                STEP_SIZE, N_STEPS,
-                SPACE_COEF, TIME_COEF,
-                SPEED, obstacles,
-                BIAS_PROB, LIMIT,
-                SPATIAL_TOL, TIME_TOL
+                speed, obstacles,
+                bias_prob, limit,
+                spatial_tol, time_tol
             )
-            # print(f"{current_results}")
             best_key = None
             best_cost = np.inf
 
@@ -136,32 +203,17 @@ class MultiRRTStarPlanner():
             if best_key is None:
                 break
 
-            # best_results[best_key] = current_results[best_key]
             chosen = current_results[best_key]
-
             goal_node = chosen["goal_node"]
-            planner = RttStarPlanner(
-                lower_limit, upper_limit,
-                STEP_SIZE, N_STEPS,
-                SPACE_COEF, TIME_COEF
-            )
-            planner._tree = chosen["tree"]
-
-            pruned_goal = self.prune_path(goal_node, planner, obstacles)
+            pruned_goal = self.prune_path(goal_node, obstacles)
 
             chosen["goal_node"] = pruned_goal
             chosen["final_cost"] = pruned_goal._cost
             chosen["final_time"] = pruned_goal._position[3]
 
             best_results[best_key] = chosen
-            # assignments.append((best_key, best_cost))
-
-
-            
-
-            # best_goal_node = current_results[best_key]["goal_node"]
             if pruned_goal is not None:
-                path_obstacle = self.path_to_obstacle(pruned_goal, OBSTACLE_RADIUS)
+                path_obstacle = self.path_to_obstacle(pruned_goal, obstacle_radius)
                 obstacles.append(path_obstacle)
 
             start_name, goal_name = best_key.split(" -> ")
@@ -172,7 +224,12 @@ class MultiRRTStarPlanner():
 
         return best_results
     
-    def prune_path(self, goal_node, planner, obstacles):
+
+    def prune_path(
+            self, 
+            goal_node, 
+            obstacles
+        ):
         """
         Recibe goal_node y elimina nodos intermedios siempre que el segmento directo
         entre puntos consecutivos no tenga colisión.
@@ -197,7 +254,7 @@ class MultiRRTStarPlanner():
             last_valid = i + 1
 
             while j < len(path):
-                if planner._check_restrictions(path[j], pruned[-1], obstacles):
+                if self._planner._check_restrictions(path[j], pruned[-1], obstacles):
                     last_valid = j
                     j += 1
                 else:
@@ -215,7 +272,7 @@ class MultiRRTStarPlanner():
         pruned[0]._cost = 0.0
 
         for k in range(1, len(pruned)):
-            pruned[k].set_parent(pruned[k-1], planner._space_coef, planner._time_coef)
+            pruned[k].set_parent(pruned[k-1], self._planner._space_coef, self._planner._time_coef)
 
         return pruned[-1]  # nuevo goal_node podado
 
@@ -224,29 +281,20 @@ class MultiRRTStarPlanner():
         self, 
         starts, 
         goals,
-        lower_limit, 
-        upper_limit,
-        STEP_SIZE, 
-        N_STEPS,
-        SPACE_COEF, 
-        TIME_COEF,
-        SPEED, 
+        speed, 
         obstacles,
-        BIAS_PROB, 
-        LIMIT,
-        SPATIAL_TOL, 
-        TIME_TOL,
-        CYLINDER_HEIGHT,
-        OBSTACLE_RADIUS
+        bias_prob, 
+        limit,
+        spatial_tol, 
+        time_tol,
+        obstacle_height,
+        obstacle_radius
     ):
         results = self.choose_and_plan(
             starts, goals,
-            lower_limit, upper_limit,
-            STEP_SIZE, N_STEPS,
-            SPACE_COEF, TIME_COEF,
-            SPEED, obstacles,
-            BIAS_PROB, LIMIT,
-            SPATIAL_TOL, TIME_TOL,CYLINDER_HEIGHT,OBSTACLE_RADIUS
+            speed, obstacles,
+            bias_prob, limit,
+            spatial_tol, time_tol,obstacle_height, obstacle_radius
         )
     
         dt = .5

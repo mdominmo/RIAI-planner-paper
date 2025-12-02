@@ -27,7 +27,7 @@ class MissionNode(Node):
 
         self.declare_parameter('mode', 'execution')
         self.declare_parameter('perception', 'global')
-        self.declare_parameter('plan_type', 0)
+        self.declare_parameter('plan_type', 1)
         self.declare_parameter('targets', 4)
         self.declare_parameter("vehicle_ids", [1,2])
         self.declare_parameter('n_points', 200)
@@ -38,11 +38,11 @@ class MissionNode(Node):
         self.declare_parameter('n_steps', 2000)
         self.declare_parameter('space_coef', .8)
         self.declare_parameter('time_coef', .2)
-        self.declare_parameter('avg_speed', 1.0)
+        self.declare_parameter('avg_speed', 2.0)
         self.declare_parameter('spatial_tol', .5)
         self.declare_parameter('time_tol', 100.0)
         self.declare_parameter('cylinder_height', 1.0)
-        self.declare_parameter('cylinder_radius', 1.0)
+        self.declare_parameter('cylinder_radius', .5)
         
         self.mode = self.get_parameter('mode').get_parameter_value().string_value
         self.perception = self.get_parameter('perception').get_parameter_value().string_value
@@ -97,10 +97,13 @@ class MissionNode(Node):
             rclpy.spin_once(self, timeout_sec=2.0)
 
         trajectories = []
-        while len(trajectories) != len(self.vehicle_ids):
+        while not self._check_trajectories(trajectories):
             self.get_logger().info(f"Computing initial trajectory.")
-            trajectories = self.planner.get_initial_trajectory(self.get_vehicle_poses(), self.obstacle_poses)
-        
+            future = self.planner.get_initial_trajectory(self.get_vehicle_poses(), self.obstacle_poses)
+            while not future.done():
+                rclpy.spin_once(self, timeout_sec=2.0)
+            trajectories = future.result()
+
         self.get_logger().info(f"Vehicles going to initial formation.")
         future = self.multi_offboard_controller.trajectory_following(
             range(len(self.vehicle_ids)),
@@ -133,14 +136,17 @@ class MissionNode(Node):
         targets_poses = [self.target_poses[int(id)] for id in self.detected_ids]
         
         trajectories = []
-        while len(trajectories) != len(self.vehicle_ids):
+        while not self._check_trajectories(trajectories):
             self.get_logger().info(f"Computing execution trajectory.")
-            trajectories = self.planner.get_tasks_planning(
+            future = self.planner.get_tasks_planning(
                 self.get_vehicle_poses(), 
                 targets_poses,
                 self.obstacle_poses,
                 self.plan_type
             )
+            while not future.done():
+                rclpy.spin_once(timeout_sec=2.0)
+            trajectories = future.result()
 
         self.get_logger().info(f"Executing mission.")
         start_time = time.perf_counter()
@@ -273,6 +279,16 @@ class MissionNode(Node):
             self.cylinder_radius
         )
         self.get_tracked_poses()
+
+    def _check_trajectories(self, trajectories):
+        valid_trajectories = [traj for traj in trajectories if traj and all(isinstance(traj[i], list) and len(traj[i]) > 0 for i in range(4))]
+
+        if len(valid_trajectories) != len(self.vehicle_ids):
+            self.get_logger().warn(f"Trajectories missing for some vehicles! "
+                                f"{len(valid_trajectories)}/{len(self.vehicle_ids)} valid")
+            return False
+        return True
+
         
 
 def main(args=None):

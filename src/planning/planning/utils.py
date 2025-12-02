@@ -14,6 +14,28 @@ import os
 from scipy import interpolate
 
 
+def model_static_obstacles(
+        obstacles_poses,
+        t_final,
+        cylinder_height,
+        obstacle_radius
+):
+    obstacles = []
+    for obstacle in obstacles_poses:
+        delta_t = .5
+        t_obs = np.arange(0, t_final + delta_t, delta_t)
+        n_points = len(t_obs)
+        x_obs = np.full(n_points, obstacle.position.x)
+        y_obs = np.full(n_points, obstacle.position.y)
+        z_obs = np.full(n_points, cylinder_height)
+        r_obs = np.full(n_points, obstacle_radius)
+
+        obstacle = np.column_stack([x_obs, y_obs, z_obs, t_obs, r_obs])
+        obstacles.append(obstacle)
+    
+    return obstacles
+
+
 def densify_waypoints(poses, points_per_segment=5):
     """
     Genera puntos intermedios lineales entre waypoints para suavizar el spline.
