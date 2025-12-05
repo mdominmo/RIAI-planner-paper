@@ -96,7 +96,15 @@ class MultiRRTStarPlanner():
         for s_name, s in starts:
             for g_name, g in goals:
 
-                goal_node, tree, n_iterations = self._planner.plan(
+                planner = RttStarPlanner(
+                    self._lower_limit,
+                    self._upper_limit,
+                    self._step_size,
+                    self._n_steps,
+                    self._space_coef,
+                    self._time_coef
+                )
+                goal_node, tree, n_iterations = planner.plan(
                     s, g, 
                     speed, obstacles, 
                     bias_prob, limit, 
