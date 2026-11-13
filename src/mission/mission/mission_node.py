@@ -1,16 +1,16 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
-from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose
+from std_msgs.msg import Bool
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
 from offboard_control.control.multi_offboard_controller_assembler import MultiOffboardControllerAssembler
 from offboard_control.service.sim_uavs_configuration_service import SimUAVSConfigurationService
 from offboard_control.domain.constant.states import States
 import time
-import cv2
 from planning.planner import Planner
 from planning.utils import enu_ned, enu_ned_trajectories, bspline_trajectory
-from riai_msgs.srv import Tracking
+from swarm_interfaces.msg import TaskMap
+from swarm_interfaces.srv import Tracking, GetTaskMap
 from datetime import datetime
 from mission import batch_processing
 
@@ -50,16 +50,22 @@ class MissionNode(Node):
         self.cylinder_height = self.get_parameter('cylinder_height').get_parameter_value().double_value
         self.cylinder_radius = self.get_parameter('cylinder_radius').get_parameter_value().double_value
 
-        self.bridge = CvBridge()
-        self.dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
-        self.parameters = cv2.aruco.DetectorParameters()
         self.multi_offboard_controller = None
-        self.target_poses = {}
         self.obstacle_poses = {}
-        self.rgb_subs = []
         self.detected_ids = set()
         self.planner = None
-        self._perception_active = False
+
+        # Cooperative perception: the ArUco detectors on board each UAV only
+        # process images while this is true; the global fusion module
+        # (perception/fusion_node) publishes the fused task map.
+        latched = QoSProfile(
+            depth=1,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.perception_active_pub = self.create_publisher(Bool, "/perception/active", latched)
+        self.set_perception_active(False)
+        self.create_subscription(TaskMap, "/perception/task_map", self.task_map_callback, latched)
 
         self._perception_start_time = None
         self._assignation_start_time = None
@@ -111,7 +117,7 @@ class MissionNode(Node):
         assigned_uavs, trajectories = self.planner.get_perception_trajectory()
 
         self.get_logger().info(f"Starting Perception")   
-        self._perception_active = True     
+        self.set_perception_active(True)
         self._perception_start_time = time.perf_counter()
         future = self.multi_offboard_controller.trajectory_following(
             assigned_uavs,
@@ -120,6 +126,7 @@ class MissionNode(Node):
         while not future.done():
             rclpy.spin_once(self, timeout_sec=2.0)
 
+        self.set_perception_active(False)
         end_time = time.perf_counter()
         elapsed = end_time - self._perception_start_time
         self.get_logger().info(f"Perception finish.")
@@ -133,11 +140,22 @@ class MissionNode(Node):
         trajectories = []
         assigned_uavs = []
 
-        for id in self.detected_ids:
-            pose = self.target_poses[int(id)]
+        for task_id, position in self.get_task_map():
+            pose = Pose()
+            pose.position.x = position.x
+            pose.position.y = position.y
             pose.position.z = self.mission_height
             targets_poses.append(pose)
-            tasks_ids.append(id)
+            tasks_ids.append(task_id)
+
+        if not targets_poses:
+            self.get_logger().warn("No tasks detected during perception: landing.")
+            future = self.multi_offboard_controller.land_all()
+            while not future.done():
+                rclpy.spin_once(self, timeout_sec=2.0)
+            self.multi_offboard_controller.hold_all()
+            self.multi_offboard_controller.disarm_all()
+            return
 
         assignation_initial_vehicle_poses = self.get_vehicle_poses()
         self._assignation_start_time = time.perf_counter()
@@ -204,7 +222,7 @@ class MissionNode(Node):
 
 
     def get_tracked_poses(self):
-        
+        """Obstacle poses (static obstacles are known a priori)."""
         cli = self.create_client(Tracking, "tracking_service")
         while not cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info("Waiting for tracking service...")
@@ -214,28 +232,44 @@ class MissionNode(Node):
             rclpy.spin_once(self, timeout_sec=2.0)
         
         response = future.result()
-        self.target_poses = response.target_poses
         self.obstacle_poses = response.obstacle_poses
 
 
-    def image_callback(self, msg):
+    def set_perception_active(self, active: bool):
+        self.perception_active_pub.publish(Bool(data=active))
 
-        if self._perception_active:
-            cv_image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            _, ids, _ = cv2.aruco.detectMarkers(cv_image, self.dictionary, parameters=self.parameters)
 
-            if ids is not None:
-                for aruco_id in ids.flatten():
-                    if aruco_id not in self.detected_ids and aruco_id < len(self.target_poses):
-                        self.detected_ids.add(aruco_id)
-                        self.get_logger().info(f"New task detected: {aruco_id}")
+    def task_map_callback(self, msg):
+        """Logs each task the first time it appears in the fused map."""
+        for task_id, position in zip(msg.ids, msg.positions):
+            if task_id in self.detected_ids:
+                continue
+            self.detected_ids.add(task_id)
+            self.get_logger().info(f"New task detected: {task_id}")
+            pose = Pose()
+            pose.position = position
+            batch_processing.save_perception_row(
+                self.mission_id,
+                task_id,
+                pose,
+                time.perf_counter()
+            )
 
-                        batch_processing.save_perception_row(
-                            self.mission_id,
-                            aruco_id,
-                            self.target_poses[aruco_id],
-                            time.perf_counter()
-                        )
+
+    def get_task_map(self):
+        """Fused task map [(ID_n, p_n)] from the global fusion module."""
+        cli = self.create_client(GetTaskMap, "/perception/get_task_map")
+        while not cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info("Waiting for the global fusion module...")
+
+        future = cli.call_async(GetTaskMap.Request())
+        while not future.done():
+            rclpy.spin_once(self, timeout_sec=2.0)
+
+        task_map = future.result().map
+        for task_id, p, n in zip(task_map.ids, task_map.positions, task_map.num_measurements):
+            self.get_logger().info(f"Task {task_id}: ({p.x:.2f}, {p.y:.2f}) from {n} measurements")
+        return list(zip(task_map.ids, task_map.positions))
 
 
     def transform_to_local_frame_trajectory(self, trajectories):
@@ -274,14 +308,6 @@ class MissionNode(Node):
             self,
             self.configuration_service.get_offboard_configurations()
         ) 
-        for i in range(1, self.num_vehicles+1):
-            self.rgb_subs.append(self.create_subscription(
-                CompressedImage,
-                f"/world/riai_planner_paper_world/model/x500_vision_{i}/link/mono_cam/base_link/sensor/camera/image/compressed",
-                self.image_callback,
-                10
-            ))
-        
         self.mission_frame_pose = Pose()
         self.mission_frame_pose.position.x = self.mission_frame[0]
         self.mission_frame_pose.position.y = self.mission_frame[1] 
@@ -332,7 +358,6 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
-        cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
