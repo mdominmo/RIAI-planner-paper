@@ -47,6 +47,35 @@ def px4_gz_positioning_setup(context, *args, **kwargs):
     return actions
 
 
+def perception_setup(context, *args, **kwargs):
+    """Cooperative perception: one on-board ArUco detector per UAV + global fusion."""
+
+    num_vehicles = int(LaunchConfiguration('num_vehicles').perform(context))
+    marker_length = float(LaunchConfiguration('marker_length').perform(context))
+    marker_ids = [int(i) for i in LaunchConfiguration('marker_ids').perform(context).split(',') if i.strip()]
+
+    actions = []
+    for i in range(1, num_vehicles + 1):
+        actions.append(Node(
+            package='perception',
+            executable='aruco_detector_node',
+            name=f'aruco_detector_{i}',
+            output='screen',
+            parameters=[{
+                'uav_id': i,
+                'marker_length': marker_length,
+                'marker_ids': marker_ids,
+            }]
+        ))
+    actions.append(Node(
+        package='perception',
+        executable='fusion_node',
+        name='fusion_node',
+        output='screen',
+    ))
+    return actions
+
+
 def generate_launch_description():
 
     num_vehicles_arg = DeclareLaunchArgument(
@@ -75,6 +104,17 @@ def generate_launch_description():
         description='Spatial tolerance in RRT'
     )
 
+    marker_length_arg = DeclareLaunchArgument(
+        'marker_length',
+        default_value='2.0',
+        description='Side of the ArUco markers [m]'
+    )
+    marker_ids_arg = DeclareLaunchArgument(
+        'marker_ids',
+        default_value='0,1,2,3,4,5',
+        description='Valid task IDs (other decoded IDs are false detections)'
+    )
+
     ld = LaunchDescription()
 
     ld.add_action(num_vehicles_arg)
@@ -82,7 +122,10 @@ def generate_launch_description():
     ld.add_action(mission_radius_arg)
     ld.add_action(mission_height_arg)
     ld.add_action(spatial_tol_arg)
+    ld.add_action(marker_length_arg)
+    ld.add_action(marker_ids_arg)
     ld.add_action(OpaqueFunction(function=px4_gz_positioning_setup))
+    ld.add_action(OpaqueFunction(function=perception_setup))
 
     ld.add_action(Node(
         package='tracking',

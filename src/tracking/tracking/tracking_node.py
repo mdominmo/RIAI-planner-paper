@@ -4,7 +4,7 @@ from geometry_msgs.msg import Pose
 import subprocess
 from gz.transport13 import Node as GzNode
 from gz.msgs10.pose_pb2 import Pose as GzPose
-from riai_msgs.srv import Tracking
+from swarm_interfaces.srv import Tracking
 
 class TrackingNode(Node):
   

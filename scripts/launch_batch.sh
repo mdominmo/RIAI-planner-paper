@@ -18,6 +18,8 @@ cleanup() {
     pkill -9 -f "px4_gz_positioning_node" 2>/dev/null || true
     pkill -9 -f "tracking_node" 2>/dev/null || true
     pkill -9 -f "mission_node" 2>/dev/null || true
+    pkill -9 -f "aruco_detector_node" 2>/dev/null || true
+    pkill -9 -f "fusion_node" 2>/dev/null || true
     pkill -9 -f "gz sim" 2>/dev/null || true
     pkill -9 -f "MicroXRCEAgent" 2>/dev/null || true
     pkill -9 -f "px4" 2>/dev/null || true
@@ -144,6 +146,8 @@ for vehicles in "${NUM_VEHICLES[@]}"; do
                         pkill -9 -f "px4_gz_positioning_node" 2>/dev/null || true
                         pkill -9 -f "tracking_node" 2>/dev/null || true
                         pkill -9 -f "mission_node" 2>/dev/null || true
+                        pkill -9 -f "aruco_detector_node" 2>/dev/null || true
+                        pkill -9 -f "fusion_node" 2>/dev/null || true
                         wait $LAUNCH_PID 2>/dev/null || true
                         kill_simulator
                         wait $SIMULATOR_PID 2>/dev/null || true
